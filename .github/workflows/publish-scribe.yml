@@ -34,7 +34,7 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: 'Tag to publish, e.g. 9.4.0-noanalytics-scribe-2026-07-22.3'
+        description: 'Tag to publish, e.g. 10.0.0-noanalytics-scribe-2026-10-20.1'
         required: true
         type: string
       base_tag:
@@ -43,7 +43,7 @@ on:
         default: latest
         type: string
       base_image:
-        description: 'Full base image to layer onto instead of onlyoffice-noanalytics:<base_tag>, e.g. onlyoffice/documentserver:9.4.0.1 for stock + Scribe'
+        description: 'Full base image to layer onto instead of onlyoffice-noanalytics:<base_tag>, e.g. onlyoffice/documentserver:10.0.0.1'
         required: false
         type: string
       twake_drive_ref:
@@ -85,8 +85,8 @@ jobs:
           fi
 
       # The overlay Dockerfile runs a version guard once per architecture, so the
-      # arm64 leg needs emulation. The base image's Dockerfile is COPY-only and
-      # does not, which is why the other publish workflows have no QEMU step.
+      # arm64 leg needs emulation. The base image's Dockerfile has no RUN step,
+      # which is why the other publish workflows have no QEMU step.
       - name: Set up QEMU (arm64 emulation)
         uses: docker/setup-qemu-action@v3
         with:
