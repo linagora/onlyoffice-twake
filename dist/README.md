@@ -1,8 +1,9 @@
 # Multi-arch build & push
 
 `push-multiarch.sh` builds an OnlyOffice image for `linux/amd64` + `linux/arm64`
-and publishes it as one multi-arch tag. It builds the analytics-free overlay by
-default, and doubles as the shared push engine for the [Scribe build](../scribe/).
+and publishes it as one multi-arch tag. It builds the `onlyoffice-noanalytics` base
+(`Dockerfile`, the official 10.0 image) by default, and doubles as the shared push
+engine for the [Scribe build](../scribe/).
 
 ## Why chunked uploads
 
@@ -27,7 +28,7 @@ it reuses the `docker login` credentials, so no extra setup is needed.
 ```bash
 docker login harbor.linagora.com
 
-# analytics-free overlay (context = dist/, needs dist/apps from ../build-webapps.sh)
+# onlyoffice-noanalytics base (context = dist/)
 IMAGE=harbor.linagora.com/twake-workplace/onlyoffice-noanalytics:latest \
   dist/push-multiarch.sh
 ```
@@ -45,17 +46,11 @@ Environment:
 
 ## arm64 emulation
 
-Not needed for the analytics-free overlay (COPY-only, arch-independent). It **is**
-needed when the Dockerfile has a per-arch `RUN` (the Scribe version guard does):
+Not needed for the base (no `RUN` step). It **is** needed when the Dockerfile has a
+per-arch `RUN` (the Scribe version guard does):
 
 ```bash
 docker run --privileged --rm tonistiigi/binfmt --install arm64
 ```
 
-## Single-arch / local only
-
-```bash
-../build-webapps.sh
-docker build -t onlyoffice-noanalytics:9.4.0-noanalytics .
-docker run -d -p 80:80 onlyoffice-noanalytics:9.4.0-noanalytics   # http://localhost/
-```
+Set `PLATFORMS=linux/amd64` to build one arch only, for a quick local test.
