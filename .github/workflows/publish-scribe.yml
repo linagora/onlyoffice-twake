@@ -8,8 +8,8 @@ name: Publish Scribe overlay to Harbor
 # tag publishes both images. Also dispatchable on its own, to rebuild the overlay
 # on an arbitrary label without cutting a release.
 #
-# BASE_IMAGE is pulled from Harbor rather than built here: the overlay's multi-arch
-# build reads its base from a registry, not from the local image store.
+# BASE_IMAGE is pulled rather than built here: the overlay's multi-arch build
+# reads its base from a registry, not from the local image store.
 
 on:
   workflow_call:
@@ -41,6 +41,10 @@ on:
         description: 'Tag of onlyoffice-noanalytics to layer onto'
         required: false
         default: latest
+        type: string
+      base_image:
+        description: 'Full base image to layer onto instead of onlyoffice-noanalytics:<base_tag>, e.g. onlyoffice/documentserver:9.4.0.1 for stock + Scribe'
+        required: false
         type: string
       twake_drive_ref:
         description: 'Ref of linagora/twake-drive to build the Twake Scribe plugin from (branch, tag or commit). Leave empty for the one pinned in build-scribe.sh.'
@@ -104,7 +108,7 @@ jobs:
       - name: Build and push Scribe overlay (multi-arch, chunked)
         env:
           IMAGE: ${{ secrets.HARBOR_REGISTRY }}/${{ secrets.HARBOR_PROJECT }}/onlyoffice:${{ steps.tags.outputs.image }}
-          BASE_IMAGE: ${{ secrets.HARBOR_REGISTRY }}/${{ secrets.HARBOR_PROJECT }}/onlyoffice-noanalytics:${{ steps.tags.outputs.base }}
+          BASE_IMAGE: ${{ inputs.base_image || format('{0}/{1}/onlyoffice-noanalytics:{2}', secrets.HARBOR_REGISTRY, secrets.HARBOR_PROJECT, steps.tags.outputs.base) }}
           TWAKE_DRIVE_REF_INPUT: ${{ inputs.twake_drive_ref }}
         run: |
           # An empty input keeps the ref pinned in build-scribe.sh
