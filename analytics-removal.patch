@@ -1605,8 +1605,9 @@ index 25efbd0e..750b5395 100644
 @@ -948,7 +940,6 @@ define([
                          })).show();
                      }
-                 } else
+-                } else
 -                    Common.component.Analytics.trackEvent('ToolBar', 'Copy Warning');
++                }
              }
              Common.NotificationCenter.trigger('edit:complete', me.toolbar);
          },
