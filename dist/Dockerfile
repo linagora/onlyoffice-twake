@@ -1,13 +1,6 @@
-# OnlyOffice DocumentServer 9.4.0 — analytics removed
+# OnlyOffice DocumentServer 10.0, published to Harbor as onlyoffice-noanalytics.
 #
-# Base: official onlyoffice/documentserver:9.4.0 (latest stable, multi-arch).
-# Overlay: the 5 main editors (document/spreadsheet/presentation/pdf/visio),
-# rebuilt from web-apps `release/v9.4.0` with commit 48dcc5c
-# ("[all] removed Analytic module sources") applied. This strips the Google
-# Analytics module and all trackEvent() calls from the editor `code.js` bundles.
-#
-# Architecture-independent: the overlay is pure JS/HTML/CSS, so the same files
-# are layered onto each platform's base image with no per-arch rebuild.
-FROM onlyoffice/documentserver:9.4.0
-
-COPY --chown=ds:ds apps/ /var/www/onlyoffice/documentserver/web-apps/apps/
+# Upstream removed Google Analytics from the editors in 10.0 (web-apps commit
+# 48dcc5c), so the stock image is the analytics-free base as is. Mirroring it to
+# Harbor keeps the base the Scribe overlay layers onto in our registry.
+FROM onlyoffice/documentserver:10.0.0.1

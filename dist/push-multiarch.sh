@@ -2,7 +2,7 @@
 # Build a multi-arch (amd64 + arm64) OnlyOffice image and push it to a registry
 # using regctl chunked blob uploads.
 #
-# By default it builds the analytics-free overlay (dist/Dockerfile + dist/apps/).
+# By default it builds the onlyoffice-noanalytics base (dist/Dockerfile).
 # It is also the shared build/push engine for the Scribe overlay — set CONTEXT,
 # BASE_IMAGE and EXPECT_OO_VERSION to point it at another context (see
 # ../scribe/build-scribe.sh).
@@ -15,7 +15,6 @@
 # pushes the multi-arch index directly, so there is no per-arch tag to clean up.
 #
 # Prerequisites:
-#   - default (analytics-free) context: dist/apps/ must exist (run ../build-webapps.sh)
 #   - docker login <registry>   (the credentials are reused for regctl)
 #   - arm64 emulation if the Dockerfile has per-arch RUN steps (the Scribe guard does):
 #       docker run --privileged --rm tonistiigi/binfmt --install arm64
@@ -25,23 +24,18 @@
 #     dist/push-multiarch.sh
 #
 #   # generic (used by the Scribe build):
-#   IMAGE=<repo:tag> CONTEXT=<dir> BASE_IMAGE=<img> EXPECT_OO_VERSION=9.4.0-129 \
+#   IMAGE=<repo:tag> CONTEXT=<dir> BASE_IMAGE=<img> EXPECT_OO_VERSION=10.0.0-169 \
 #     dist/push-multiarch.sh
 set -euo pipefail
 
 IMAGE="${IMAGE:?Set IMAGE, e.g. harbor.example.com/twake-workplace/onlyoffice-noanalytics:latest}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-CTX="${CONTEXT:-$HERE}"                    # default: dist/ (analytics-free overlay)
+CTX="${CONTEXT:-$HERE}"                    # default: dist/ (onlyoffice-noanalytics base)
 REGISTRY="${IMAGE%%/*}"
 TAG="${IMAGE##*:}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 BLOB_CHUNK="${BLOB_CHUNK:-16000000}"       # 16MB PATCH chunks: short requests, under proxy timeouts
 REGCTL_VERSION="${REGCTL_VERSION:-v0.11.5}"
-
-if [ "$CTX" = "$HERE" ] && [ ! -d "$HERE/apps" ]; then
-  echo "dist/apps/ missing — run ./build-webapps.sh first." >&2
-  exit 1
-fi
 
 # --- regctl (download a pinned static binary if not already on PATH) ---------
 regctl="$(command -v regctl || true)"
