@@ -1,9 +1,9 @@
-# Build the patched Word sdk-all.js from a sdkjs source tree.
+# Build the patched Word bundle (sdk-all.js + sdk-all-min.js) from a sdkjs source tree.
 #
 # Vendored here (rather than living in the sdkjs repo) so build-scribe.sh can point
-# SDKJS_REPO/SDKJS_REF at any compatible sdkjs source — e.g. Benibur/sdkjs — without
-# that repo needing to carry its own Dockerfile. Default source:
-# Benibur/sdkjs@scribe-sdkjs-2026-07-21.1.
+# SDKJS_REPO/SDKJS_REF at any compatible sdkjs source without that repo needing to
+# carry its own Dockerfile. Default source: ONLYOFFICE/sdkjs@v10.0.0.169 with
+# scribe/sdkjs-scribe.patch applied by build-scribe.sh.
 #
 # build/build.py is a pure-Python concatenation (no closure compiler, no npm/grunt,
 # so no JRE/node needed). It also merges the sdkjs-forms addon (ONLYOFFICE/sdkjs-forms),
@@ -13,7 +13,7 @@
 # the file shrinks by ~0.17MB) with no error. We clone it to /sdkjs-forms and pass
 # the absolute path.
 #
-# Output at deploy/sdkjs/word/sdk-all.js carries:
+# Output at deploy/sdkjs/word/: sdk-all-min.js and sdk-all.js, the latter carrying:
 #   - ApiRun.GetInlineDrawings, Api.GetSelectionScreenRect  (Scribe patch)
 #   - the Word forms API (AscOForm.*)                       (sdkjs-forms addon)
 FROM python:3-slim
@@ -22,11 +22,11 @@ FROM python:3-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# sdkjs-forms addon, version-locked to the same OO build (tags v9.4.0.120..129 all
-# point at commit 1a88328). Must contain configs/word.json + the oform/ tree.
+# sdkjs-forms addon, version-locked to the same OO build (tags v10.0.0.156..176 all
+# point at commit 0148c8e). Must contain configs/word.json + the oform/ tree.
 # build-scribe.sh passes these through from FORMS_REPO/FORMS_REF.
 ARG FORMS_REPO=https://github.com/ONLYOFFICE/sdkjs-forms.git
-ARG FORMS_REF=v9.4.0.129
+ARG FORMS_REF=v10.0.0.169
 RUN git clone --depth 1 --branch "$FORMS_REF" "$FORMS_REPO" /sdkjs-forms \
     && test -f /sdkjs-forms/configs/word.json \
     || { echo "ERROR: forms addon missing configs/word.json — wrong FORMS_REPO/FORMS_REF?" >&2; exit 1; }
@@ -35,8 +35,8 @@ WORKDIR /sdkjs
 COPY . .
 
 # PRODUCT_VERSION/BUILD_NUMBER only stamp the license header; default is fine.
-ARG PRODUCT_VERSION=9.4.0
-ARG BUILD_NUMBER=129
+ARG PRODUCT_VERSION=10.0.0
+ARG BUILD_NUMBER=169
 # --addon MUST be absolute (see header). Then assert the forms API actually merged:
 # a forms-less build (silent-ignore failure mode) leaves AscOForm at 3, not ~69.
 RUN PRODUCT_VERSION="$PRODUCT_VERSION" BUILD_NUMBER="$BUILD_NUMBER" \

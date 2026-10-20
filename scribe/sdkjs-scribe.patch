@@ -1,0 +1,386 @@
+diff --git a/common/base-plugin-events.js b/common/base-plugin-events.js
+index 9079028..bc070f8 100644
+--- a/common/base-plugin-events.js
++++ b/common/base-plugin-events.js
+@@ -54,6 +54,25 @@
+  * @see office-js-api/Examples/Plugins/{Editor}/Plugin/Events/onTargetPositionChanged.js
+  */
+ 
++/**
++ * Event: onSelectionGeometryChanged
++ * @event Plugin#onSelectionGeometryChanged
++ * @memberof Plugin
++ * @alias onSelectionGeometryChanged
++ * @description The function called when the ON-SCREEN geometry of the text selection
++ * changes -- either because the selection itself changed, or because it MOVED on
++ * screen (document scroll, zoom). Word editor only.
++ *
++ * Lets a plugin anchor UI to the selection without polling: reading the geometry
++ * through callCommand would truncate the editor's redo stack, so a plugin that polled
++ * on every scroll frame would destroy the user's redo history.
++ *
++ * The handler receives {rect, hasText}, where rect is
++ * {left, top, width, height, corners} in editor-window client pixels (see
++ * asc_GetSelectionScreenRect), or null when there is no text selection -- in which
++ * case hasText is false and anchored UI should hide.
++ */
++
+ /**
+  * Event: onDocumentContentReady
+  * @event Plugin#onDocumentContentReady
+diff --git a/word/Drawing/DrawingDocument.js b/word/Drawing/DrawingDocument.js
+index 40f7f35..0c37a2f 100644
+--- a/word/Drawing/DrawingDocument.js
++++ b/word/Drawing/DrawingDocument.js
+@@ -2267,6 +2267,14 @@ function CDrawingDocument()
+ 
+ 		this.MoveTargetInInputContext();
+ 
++		// Push the selection geometry to plugins. This runs here, and not from a
++		// selection-change signal, because CheckTargetDraw is reached on pure SCROLL
++		// and ZOOM as well (OnScroll -> m_bIsUpdateTargetNoAttack -> paint loop ->
++		// UpdateTargetNoAttack), i.e. exactly when the selection has not changed but
++		// has MOVED on screen. The method itself only recomputes when a selection is
++		// in use and only emits when the geometry actually differs.
++		this.NotifySelectionGeometryChanged();
++
+ 		if (this.m_oWordControl.MobileTouchManager)
+ 			this.m_oWordControl.MobileTouchManager.CheckGlassUpdate();
+ 	};
+@@ -4211,6 +4219,149 @@ function CDrawingDocument()
+ 		return {X: _x, Y: _y, Error: false};
+ 	};
+ 
++	/**
++	 * Returns the current text selection bounding box in editor WINDOW client pixels,
++	 * ready to position UI over the editor. null when there is no text selection.
++	 *
++	 * Lives here, and not next to asc_GetSelectionBounds in word/api.js, because this
++	 * is the coordinate-conversion layer: GetMainOffset and the whole
++	 * ConvertCoordsToCursor* family are right below.
++	 *
++	 * asc_GetSelectionBounds already folds in zoom, scroll, RTL and retina, but its
++	 * coordinates are relative to the WORD-CONTROL CONTAINER, not the editor window.
++	 * Two offsets have to be added back:
++	 *
++	 *   1. m_oWordControl.X/Y -- the container's document offset (browser-zoom
++	 *      corrected in checkBodyOffset, HtmlPage.js). Without it the box lands too
++	 *      high by the whole toolbar/ribbon height.
++	 *   2. the RULER offset. asc_GetSelectionBounds converts through
++	 *      ConvertCoordsToCursorWR(x, y, page, undefined, false) and that last argument
++	 *      is id_ruler_no_use, so GetMainOffset SKIPS the 5mm/7mm ruler shift, whereas
++	 *      the global variant ConvertCoordsToCursor3(..., isGlobal = true) calls
++	 *      GetMainOffset() with NO argument and includes it. The two calls do not
++	 *      return the same thing; omitting this leaves a constant 19 x 26 px error.
++	 *
++	 * We add the DIFFERENCE between the two GetMainOffset flavours rather than a
++	 * hardcoded 5mm/7mm, so the correction is zero when the ruler is hidden and stays
++	 * right under RTL.
++	 *
++	 * Ground truth to re-derive this if it drifts: OO places its own caret element
++	 * through this same pipeline, so
++	 *   TargetHtmlElement.getBoundingClientRect() minus
++	 *   {TargetHtmlElementLeft, TargetHtmlElementTop}
++	 * IS the offset a consumer must add. Measured live, the residual is (0.1, -0.5) px
++	 * -- the >> 0 rounding in private_ConvertCoordsToCursor.
++	 */
++	this.GetSelectionScreenRect = function()
++	{
++		var oApi = this.m_oWordControl ? this.m_oWordControl.m_oApi : null;
++		if (!oApi || typeof oApi.asc_GetSelectionBounds !== "function")
++			return null;
++
++		var rawCorners = oApi.asc_GetSelectionBounds();
++		if (!rawCorners)
++			return null;
++
++		var xs = [rawCorners[0][0], rawCorners[1][0], rawCorners[2][0], rawCorners[3][0]];
++		var ys = [rawCorners[0][1], rawCorners[1][1], rawCorners[2][1], rawCorners[3][1]];
++		var left   = Math.min.apply(null, xs);
++		var top    = Math.min.apply(null, ys);
++		var right  = Math.max.apply(null, xs);
++		var bottom = Math.max.apply(null, ys);
++
++		// All-zero corners mean "no selection". Tested BEFORE the offset is applied,
++		// which would move the origin and defeat the test.
++		if (left === 0 && top === 0 && right === 0 && bottom === 0)
++			return null;
++
++		var oRulerIncluded = this.GetMainOffset();
++		var oAsApplied     = this.GetMainOffset(false);
++
++		var dOffsetX = (this.m_oWordControl.X || 0) + (oRulerIncluded.x - oAsApplied.x);
++		var dOffsetY = (this.m_oWordControl.Y || 0) + (oRulerIncluded.y - oAsApplied.y);
++
++		var corners = [];
++		for (var nCorner = 0; nCorner < rawCorners.length; ++nCorner)
++			corners.push([rawCorners[nCorner][0] + dOffsetX, rawCorners[nCorner][1] + dOffsetY]);
++
++		// Visible document area, in the SAME frame as the box above. A consumer
++		// anchoring UI to the selection needs it: once the selection is scrolled out of
++		// view, the box keeps describing where the selection *would* be, which is over
++		// the toolbar or outside the editor entirely. Without this the caller has no way
++		// to tell, and its UI floats over the application chrome.
++		//
++		// Derived from the same primitives as the offset above (m_oWordControl.X/Y plus
++		// the ruler shift), so the two are consistent by construction rather than by
++		// coincidence: measured live, that origin lands on the document viewport element
++		// (id_viewer) to within the half-pixel of OO's own rounding.
++		var oViewport = null;
++		var oEditorElement = this.m_oWordControl.m_oEditor ? this.m_oWordControl.m_oEditor.HtmlElement : null;
++		if (oEditorElement)
++		{
++			oViewport = {
++				"left":   dOffsetX,
++				"top":    dOffsetY,
++				"width":  oEditorElement.clientWidth,
++				"height": oEditorElement.clientHeight
++			};
++		}
++
++		return {
++			"left":     left + dOffsetX,
++			"top":      top + dOffsetY,
++			"width":    right - left,
++			"height":   bottom - top,
++			"corners":  corners,
++			"viewport": oViewport
++		};
++	};
++
++	/**
++	 * Fires the onSelectionGeometryChanged plugin event when the on-screen geometry of
++	 * the selection has actually changed.
++	 *
++	 * Why push rather than let plugins poll: a plugin can only reach the builder
++	 * through callCommand, and callCommand TRUNCATES THE REDO STACK. Polling the rect
++	 * on every selection change -- let alone every scroll frame -- would destroy the
++	 * user's redo history. Pushing costs the plugin no callCommand at all.
++	 *
++	 * Two guards keep this cheap on the paint path: the bounds are only computed when
++	 * a selection is in use, and identical geometry is never re-emitted, so a redraw
++	 * that does not move the selection produces no message.
++	 */
++	this.NotifySelectionGeometryChanged = function()
++	{
++		if (!window.g_asc_plugins)
++			return;
++
++		var oRect = null;
++		var oLogicDocument = this.m_oWordControl ? this.m_oWordControl.m_oLogicDocument : null;
++		if (oLogicDocument
++			&& typeof oLogicDocument.IsSelectionUse === "function"
++			&& oLogicDocument.IsSelectionUse())
++		{
++			oRect = this.GetSelectionScreenRect();
++		}
++
++		// The viewport is part of the key: a window resize can leave the selection box
++		// unchanged while moving the visible area, and a consumer that clips against a
++		// stale viewport would hide or show its UI wrongly.
++		var oVp = oRect ? oRect["viewport"] : null;
++		var sKey = oRect
++			? oRect["left"] + "," + oRect["top"] + "," + oRect["width"] + "," + oRect["height"]
++				+ (oVp ? "|" + oVp["left"] + "," + oVp["top"] + "," + oVp["width"] + "," + oVp["height"] : "")
++			: "";
++
++		if (sKey === this.selectionGeometryKey)
++			return;
++
++		this.selectionGeometryKey = sKey;
++		window.g_asc_plugins.onPluginEvent("onSelectionGeometryChanged", {
++			"rect": oRect,
++			"hasText": !!oRect
++		});
++	};
++
+ 	this.GetMainOffset = function(isUseRuler)
+ 	{
+ 		let result = {
+diff --git a/word/Editor/Document.js b/word/Editor/Document.js
+index 91a9135..8f120a9 100644
+--- a/word/Editor/Document.js
++++ b/word/Editor/Document.js
+@@ -12616,6 +12616,21 @@ CDocument.prototype.private_UpdateSelection = function()
+ 
+ 	// Обновим состояние кнопок Copy/Cut
+ 	this.Document_UpdateCopyCutState();
++
++	// Push the selection geometry to plugins (onSelectionGeometryChanged).
++	//
++	// The companion call in DrawingDocument.CheckTargetDraw covers the selection
++	// MOVING on screen (scroll, zoom). It does NOT cover the selection CHANGING by
++	// mouse: dragging a selection does not necessarily redraw the caret target, so
++	// CheckTargetDraw is not reached and the event never fired -- a programmatic
++	// selection went through UpdateTarget and hid the gap during testing.
++	//
++	// Here is the canonical selection-state update, reached by mouse, keyboard and
++	// API alike, and already guarded above against interface-events-off and the
++	// collaborative selection lock. Emitting from both places is safe: the emitter
++	// drops anything whose geometry is unchanged.
++	if (this.DrawingDocument && this.DrawingDocument.NotifySelectionGeometryChanged)
++		this.DrawingDocument.NotifySelectionGeometryChanged();
+ };
+ CDocument.prototype.UpdateDocumentOutlinePosition = function()
+ {
+diff --git a/word/apiBuilder.js b/word/apiBuilder.js
+index 56d90f4..a65fa36 100644
+--- a/word/apiBuilder.js
++++ b/word/apiBuilder.js
+@@ -4984,6 +4984,36 @@
+ 	{
+ 		return new ApiDocument(private_GetLogicDocument());
+ 	};
++	/**
++	 * Returns the current text selection bounding box in editor WINDOW client pixels.
++	 * Word editor only.
++	 *
++	 * Thin wrapper: the actual conversion lives in
++	 * DrawingDocument.GetSelectionScreenRect (word/Drawing/DrawingDocument.js), so this
++	 * builder entry point and the onSelectionGeometryChanged plugin event share one
++	 * implementation and cannot drift apart. See that method for why the raw
++	 * asc_GetSelectionBounds output is not usable as-is (container offset + ruler
++	 * offset), and for why it cannot live in word/api.js.
++	 *
++	 * Runs in the editor window (callCommand context), where Asc.editor is the live
++	 * asc_docs_api.
++	 * @memberof Api
++	 * @typeofeditors ["CDE"]
++	 * @returns {?{left:number, top:number, width:number, height:number, corners:number[][]}} -
++	 *   Bounding box + the 4 corners [[x0,y0](start-top-left),[x1,y1](start-bottom-left),
++	 *   [x2,y2](end-top-right),[x3,y3](end-bottom-right)], all in the same editor-window
++	 *   frame, or null when there is no text selection.
++	 */
++	Api.GetSelectionScreenRect = function()
++	{
++		var oEditor = Asc.editor;
++		var oWordControl = oEditor ? oEditor.WordControl : null;
++		var oDrawingDocument = oWordControl ? oWordControl.m_oDrawingDocument : null;
++		if (!oDrawingDocument || typeof oDrawingDocument.GetSelectionScreenRect !== "function")
++			return null;
++
++		return oDrawingDocument.GetSelectionScreenRect();
++	};
+ 	/**
+ 	 * Returns the object by it's internal ID.
+ 	 * @memberof Api
+@@ -14097,14 +14127,101 @@
+ 	ApiRun.prototype.GetText = function(options)
+ 	{
+ 		options = options || {};
+-		
++
+ 		return this.Run.GetText({
+ 			Text             : "",
+ 			NewLineSeparator : GetStringParameter(options["NewLineSeparator"], "\r"),
+ 			TabSymbol        : GetStringParameter(options["TabSymbol"], "\t")
+ 		});
+ 	};
+-	
++
++	/**
++	 * Returns the inline drawings contained in this run with their character
++	 * positions within the run text.
++	 *
++	 * Each entry contains the {@link ApiDrawing} object and the zero-based
++	 * character index at which it appears in the string returned by
++	 * {@link ApiRun#GetText}. This allows callers to reconstruct the full
++	 * mixed content (text interleaved with drawings) in document order.
++	 *
++	 * Returns an empty array if the run contains no inline drawings.
++	 *
++	 * @memberof ApiRun
++	 * @typeofeditors ["CDE"]
++	 * @returns {Array<{drawing: ApiDrawing, position: number}>}
++	 *
++	 * @example
++	 * // Serialize a paragraph with inline images to markdown.
++	 * // Use GetAllDrawingObjects() on the paragraph first to skip
++	 * // paragraphs without drawings entirely (fast path).
++	 * var paraDrawings = paragraph.GetAllDrawingObjects();
++	 * if (paraDrawings.length === 0) {
++	 *   // No drawings — plain text only
++	 *   for (var i = 0; i < paragraph.GetElementsCount(); i++) {
++	 *     markdown += paragraph.GetElement(i).GetText();
++	 *   }
++	 * } else {
++	 *   // Has drawings — inspect each run for inline drawing positions
++	 *   for (var i = 0; i < paragraph.GetElementsCount(); i++) {
++	 *     var el = paragraph.GetElement(i);
++	 *     if (el.GetClassType() === "run") {
++	 *       var text = el.GetText();
++	 *       var inlineDrawings = el.GetInlineDrawings();
++	 *       if (inlineDrawings.length === 0) {
++	 *         markdown += text;
++	 *       } else {
++	 *         // Split text at drawing positions and interleave placeholders
++	 *         var lastPos = 0;
++	 *         for (var j = 0; j < inlineDrawings.length; j++) {
++	 *           var pos = inlineDrawings[j].position;
++	 *           markdown += text.substring(lastPos, pos);
++	 *           markdown += "{{IMG:" + inlineDrawings[j].drawing.GetName() + "}}";
++	 *           lastPos = pos;
++	 *         }
++	 *         markdown += text.substring(lastPos);
++	 *       }
++	 *     }
++	 *   }
++	 * }
++	 *
++	 * @see office-js-api/Examples/{Editor}/ApiRun/Methods/GetInlineDrawings.js
++	 */
++	ApiRun.prototype.GetInlineDrawings = function()
++	{
++		var arrResult   = [];
++		var arrContent  = this.Run.Content;
++		var nCharIndex  = 0;
++
++		for (var nPos = 0, nCount = arrContent.length; nPos < nCount; ++nPos)
++		{
++			var oItem = arrContent[nPos];
++
++			switch (oItem.Type)
++			{
++				case para_Drawing:
++				{
++					arrResult.push({
++						"drawing"  : GetApiDrawing(oItem.GraphicObj) || new ApiDrawing(oItem.GraphicObj),
++						"position" : nCharIndex
++					});
++					break;
++				}
++				case para_Text:
++				case para_Space:
++				case para_Tab:
++				case para_NewLine:
++				case para_Math_Text:
++				case para_Math_BreakOperator:
++				{
++					nCharIndex++;
++					break;
++				}
++			}
++		}
++
++		return arrResult;
++	};
++
+ 	/**
+ 	 * Moves a cursor to a specified position of the current text run.
+ 	 *
+@@ -34739,6 +34856,7 @@
+ 	// Export
+ 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+ 	Api["GetDocument"]                      = Api.GetDocument;
++	Api["GetSelectionScreenRect"]           = Api.GetSelectionScreenRect;
+ 	Api["GetByInternalId"]                  = Api.GetByInternalId;
+ 	Api["CreateParagraph"]                  = Api.CreateParagraph;
+ 	Api["CreateTable"]                      = Api.CreateTable;
+@@ -35150,6 +35268,7 @@
+ 	ApiRun.prototype["ToJSON"]                       = ApiRun.prototype.ToJSON;
+ 	ApiRun.prototype["AddComment"]                   = ApiRun.prototype.AddComment;
+ 	ApiRun.prototype["GetText"]                      = ApiRun.prototype.GetText;
++	ApiRun.prototype["GetInlineDrawings"]            = ApiRun.prototype.GetInlineDrawings;
+ 	ApiRun.prototype["MoveCursorToPos"]              = ApiRun.prototype.MoveCursorToPos;
+ 
+ 
