@@ -3,8 +3,8 @@
 # using regctl chunked blob uploads.
 #
 # By default it builds the analytics-free overlay (dist/Dockerfile + dist/apps/).
-# It is also the shared build/push engine for the Scribe overlay — set CONTEXT,
-# BASE_IMAGE and EXPECT_OO_VERSION to point it at another context (see
+# It is also the shared build/push engine for the Scribe overlay — set CONTEXT
+# and BASE_IMAGE to point it at another context (see
 # ../scribe/build-scribe.sh).
 #
 # Why regctl chunked instead of `buildx --push` / `docker push`: harbor.linagora.com
@@ -17,7 +17,7 @@
 # Prerequisites:
 #   - default (analytics-free) context: dist/apps/ must exist (run ../build-webapps.sh)
 #   - docker login <registry>   (the credentials are reused for regctl)
-#   - arm64 emulation if the Dockerfile has per-arch RUN steps (the Scribe guard does):
+#   - arm64 emulation if a Dockerfile ever has per-arch RUN steps (neither overlay does):
 #       docker run --privileged --rm tonistiigi/binfmt --install arm64
 #
 # Usage:
@@ -25,7 +25,7 @@
 #     dist/push-multiarch.sh
 #
 #   # generic (used by the Scribe build):
-#   IMAGE=<repo:tag> CONTEXT=<dir> BASE_IMAGE=<img> EXPECT_OO_VERSION=9.4.0-129 \
+#   IMAGE=<repo:tag> CONTEXT=<dir> BASE_IMAGE=<img> \
 #     dist/push-multiarch.sh
 set -euo pipefail
 
@@ -80,8 +80,7 @@ fi
 
 # --- build a multi-arch OCI layout, then push it chunked ---------------------
 BUILD_ARGS=()
-[ -n "${BASE_IMAGE:-}" ]        && BUILD_ARGS+=(--build-arg "BASE_IMAGE=${BASE_IMAGE}")
-[ -n "${EXPECT_OO_VERSION:-}" ] && BUILD_ARGS+=(--build-arg "EXPECT_OO_VERSION=${EXPECT_OO_VERSION}")
+[ -n "${BASE_IMAGE:-}" ] && BUILD_ARGS+=(--build-arg "BASE_IMAGE=${BASE_IMAGE}")
 
 docker buildx inspect oo-builder >/dev/null 2>&1 || \
   docker buildx create --name oo-builder --driver docker-container --bootstrap >/dev/null
