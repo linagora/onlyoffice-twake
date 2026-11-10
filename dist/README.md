@@ -39,14 +39,13 @@ Environment:
 | `IMAGE` | target `repo:tag` (required) |
 | `CONTEXT` | build context dir (default `dist/`) |
 | `BASE_IMAGE` | passed as `--build-arg BASE_IMAGE` when the Dockerfile takes one |
-| `EXPECT_OO_VERSION` | passed as `--build-arg EXPECT_OO_VERSION` (version guard) |
 | `PLATFORMS` | platforms to build (default `linux/amd64,linux/arm64`) |
 | `BLOB_CHUNK` | chunk size in bytes (default `16000000`) |
 
 ## arm64 emulation
 
-Not needed for the analytics-free overlay (COPY-only, arch-independent). It **is**
-needed when the Dockerfile has a per-arch `RUN` (the Scribe version guard does):
+Not needed for the analytics-free and Scribe overlays (COPY-only, arch-independent).
+Only a Dockerfile with a per-arch `RUN` would need it:
 
 ```bash
 docker run --privileged --rm tonistiigi/binfmt --install arm64

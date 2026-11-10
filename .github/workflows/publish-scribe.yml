@@ -84,14 +84,6 @@ jobs:
             echo "base=${BASE_TAG}" >> "$GITHUB_OUTPUT"
           fi
 
-      # The overlay Dockerfile runs a version guard once per architecture, so the
-      # arm64 leg needs emulation. The base image's Dockerfile is COPY-only and
-      # does not, which is why the other publish workflows have no QEMU step.
-      - name: Set up QEMU (arm64 emulation)
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -102,8 +94,7 @@ jobs:
           username: ${{ secrets.HARBOR_USER }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
-      # build-scribe.sh compiles sdk-all.js from the pinned sdkjs source, builds
-      # the Twake Scribe plugin from Twake Drive, and hands off to
+      # build-scribe.sh builds the Twake Scribe plugin from Twake Drive, and hands off to
       # dist/push-multiarch.sh for the chunked push that Harbor's proxy requires.
       - name: Build and push Scribe overlay (multi-arch, chunked)
         env:
