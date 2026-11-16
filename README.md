@@ -5,8 +5,7 @@ published to Harbor under the `twake-workplace` project. Two independent overlay
 the official `onlyoffice/documentserver` image, composed into the shipped images:
 
 - **analytics-free**: Google Analytics tracking removed from the editors.
-- **Scribe**: the Scribe editor addon (patched `sdkjs` + the Twake Scribe plugin of
-  Twake Drive).
+- **Scribe**: the Twake Scribe plugin of Twake Drive.
 
 | Image (tag) | Base | Analytics | Scribe |
 |-------------|------|-----------|--------|
@@ -31,10 +30,9 @@ customization is a thin **overlay** layered onto that image:
   landed three days after the 9.4.0 release, so it is not in the stock image. The
   overlay is pure JS/HTML, so it is architecture-independent (clean multi-arch, no
   emulation).
-- **Scribe** (`scribe/`): a patched `sdk-all.js` plus the Twake Scribe plugin of
-  Twake Drive (`sdkjs-plugins/twake-scribe`), layered onto either the analytics-free
-  image or stock 9.4.0.1. The patch is version-locked to build `9.4.0-129` (a build
-  guard enforces it).
+- **Scribe** (`scribe/`): the Twake Scribe plugin of Twake Drive
+  (`sdkjs-plugins/twake-scribe`), layered onto either the analytics-free image or
+  stock 9.4.0.1. The plugin runs on the stock editor API: no sdkjs is replaced.
 
 ### Analytics scope
 
@@ -62,8 +60,6 @@ To debug a build. These produce local images; publishing goes through CI.
 
 ```bash
 ./build-webapps.sh                       # rebuild GA-free editor bundles -> dist/apps/
-
-docker run --privileged --rm tonistiigi/binfmt --install arm64   # arm64 emulation, once
 
 IMAGE=onlyoffice:local-scribe \
 BASE_IMAGE=onlyoffice/documentserver:9.4.0.1 \
@@ -122,8 +118,7 @@ Checked on served builds:
   console errors.
 - Analytics-free editors: `trackEvent` / `component.Analytics` / `UA-12442749` = **0**
   in all 5 served `code.js` bundles (stock base had doc=8, sheet=33, slide=35, pdf=25).
-- Scribe images: `sdk-all.js` carries the patch (`GetInlineDrawings`), the plugin is
-  served, and the editor analytics match the base (0 on the analytics-free base,
+- Scribe images: the plugin is served, and the editor analytics match the base (0 on the analytics-free base,
   stock on 9.4.0.1).
 
 ## Repo layout
