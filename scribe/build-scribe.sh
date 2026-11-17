@@ -22,10 +22,10 @@ IMAGE="${IMAGE:?Set IMAGE, e.g. harbor.example.com/twake-workplace/onlyoffice:9.
 BASE_IMAGE="${BASE_IMAGE:?Set BASE_IMAGE, e.g. onlyoffice/documentserver:9.4.0.1}"
 
 # The Twake Scribe plugin lives in Twake Drive (plugins/onlyoffice-scribe), which
-# builds it with its Markdown reader. A commit keeps a release reproducible; a
-# branch or a tag works too, for a test image.
+# builds it with its Markdown reader. Defaults to Twake Drive's master, so each
+# build ships the latest plugin; the log names the commit it was built from.
 TWAKE_DRIVE_REPO="${TWAKE_DRIVE_REPO:-https://github.com/linagora/twake-drive.git}"
-TWAKE_DRIVE_REF="${TWAKE_DRIVE_REF:-cf4a3e18dc53d0eb1fe234fef718f403ff700790}"
+TWAKE_DRIVE_REF="${TWAKE_DRIVE_REF:-master}"
 TWAKE_SCRIBE_GUID='asc.{E4B4F030-94E5-48BE-A962-A6E87CB6262B}'
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT

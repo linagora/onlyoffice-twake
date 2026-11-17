@@ -28,7 +28,7 @@ on:
         default: latest
         type: string
       twake_drive_ref:
-        description: 'Ref of linagora/twake-drive to build the Twake Scribe plugin from. Leave empty for the one pinned in build-scribe.sh.'
+        description: 'Ref of linagora/twake-drive to build the Twake Scribe plugin from. Leave empty for master.'
         required: false
         type: string
   workflow_dispatch:
@@ -47,7 +47,7 @@ on:
         required: false
         type: string
       twake_drive_ref:
-        description: 'Ref of linagora/twake-drive to build the Twake Scribe plugin from (branch, tag or commit). Leave empty for the one pinned in build-scribe.sh.'
+        description: 'Ref of linagora/twake-drive to build the Twake Scribe plugin from (branch, tag or commit). Leave empty for master.'
         required: false
         type: string
 
@@ -102,6 +102,6 @@ jobs:
           BASE_IMAGE: ${{ inputs.base_image || format('{0}/{1}/onlyoffice-noanalytics:{2}', secrets.HARBOR_REGISTRY, secrets.HARBOR_PROJECT, steps.tags.outputs.base) }}
           TWAKE_DRIVE_REF_INPUT: ${{ inputs.twake_drive_ref }}
         run: |
-          # An empty input keeps the ref pinned in build-scribe.sh
+          # An empty input keeps the default ref of build-scribe.sh (master)
           if [ -n "$TWAKE_DRIVE_REF_INPUT" ]; then export TWAKE_DRIVE_REF="$TWAKE_DRIVE_REF_INPUT"; fi
           ./scribe/build-scribe.sh
