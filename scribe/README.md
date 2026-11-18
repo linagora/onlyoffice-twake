@@ -46,7 +46,7 @@ Environment:
 |-----|---------|---------|
 | `IMAGE` | (required) | target `repo:tag` |
 | `BASE_IMAGE` | (required) | foundation image |
-| `TWAKE_DRIVE_REF` | a pinned commit | Twake Drive ref the plugin is built from (commit, tag or branch) |
+| `TWAKE_DRIVE_REF` | `master` | Twake Drive ref the plugin is built from (commit, tag or branch) |
 | `TWAKE_DRIVE_REPO` | `linagora/twake-drive` | plugin source repo |
 
 `build-scribe.sh` checks that the plugin is the Twake Scribe one with its Markdown
