@@ -45,8 +45,11 @@ git -C "$WORK/drive" fetch -q --depth 1 --filter=blob:none origin "$TWAKE_DRIVE_
 git -C "$WORK/drive" checkout -q FETCH_HEAD
 DRIVE_COMMIT="$(git -C "$WORK/drive" rev-parse --short=12 HEAD)"
 docker run --rm -v "$WORK/drive:/src" -w /src node:24-slim sh -euc '
-  npm install --silent --no-audit --no-fund --prefix /tmp/marked \
-    "marked@$(node -p "require(\"./package.json\").devDependencies.marked")"
+  marked="$(node -p "const p = require(\"./package.json\");
+    const v = p.dependencies?.marked ?? p.devDependencies?.marked;
+    if (!v) throw new Error(\"package.json does not declare marked\");
+    v")"
+  npm install --silent --no-audit --no-fund --prefix /tmp/marked "marked@$marked"
   ln -s /tmp/marked/node_modules node_modules
   node plugins/onlyoffice-scribe/build.mjs
   rm node_modules
